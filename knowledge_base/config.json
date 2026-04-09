@@ -1,0 +1,12 @@
+{
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "num_snippets": 353,
+  "embedding_dim": 384,
+  "use_npu": true,
+  "files": {
+    "faiss_index": "faiss_index.bin",
+    "bm25_index": "bm25_index.pkl",
+    "snippets": "snippets.json",
+    "embeddings": "embeddings.npy"
+  }
+}

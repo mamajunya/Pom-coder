@@ -1,0 +1,50 @@
+# RAG代码生成系统配置文件
+
+system:
+  device: "cuda:0"
+  quantization: "4bit"
+  max_memory: "6GB"
+
+models:
+  main_model:
+    path: "deepseek-coder-6.7b-instruct"
+    load_in_4bit: true
+    device_map: "auto"
+  
+  embedding_model:
+    name: "jina-embeddings-v2-base-code"
+    device: "cpu"
+    batch_size: 32
+  
+  reranker_model:
+    name: "bge-reranker-large"
+    device: "cuda:0"
+    batch_size: 8
+
+retrieval:
+  embedding_top_k: 10
+  bm25_top_k: 10
+  rrf_k: 60
+  final_top_k: 3
+
+generation:
+  temperature: 0.2
+  max_new_tokens: 512
+  top_p: 0.95
+  repetition_penalty: 1.1
+
+cache:
+  enabled: true
+  backend: "memory"
+  max_size: 1000
+  ttl: 3600
+
+performance:
+  enable_monitoring: true
+  log_level: "INFO"
+  timeout: 30
+
+security:
+  enable_rate_limit: true
+  max_requests_per_minute: 10
+  enable_output_sanitization: true

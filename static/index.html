@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pomCoder - 智能代码生成助手</title>
+    <link rel="icon" type="image/jpeg" href="/static/icon.jpg">
+    <link rel="stylesheet" href="/static/styles.css?v=3">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><img src="/static/icon.jpg" alt="pomCoder" style="width: 48px; height: 48px; vertical-align: middle; border-radius: 8px; margin-right: 10px;">pomCoder</h1>
+        </header>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('generate')" data-i18n="tab_generate">代码生成</div>
+            <div class="tab" onclick="switchTab('agent')" data-i18n="tab_agent">AI对话</div>
+            <div class="tab" onclick="switchTab('slicer')" data-i18n="tab_slicer">代码切片</div>
+            <div class="tab" onclick="switchTab('knowledge')" data-i18n="tab_knowledge">知识库管理</div>
+            <div class="tab" onclick="switchTab('api')" data-i18n="tab_api">API文档</div>
+            <div class="tab" onclick="switchTab('settings')" data-i18n="tab_settings">设置</div>
+        </div>
+
+        <div id="tab-generate" class="tab-content active">
+            <h2>代码生成</h2>
+            <div class="form-group">
+                <label>输入需求描述：</label>
+                <textarea id="query" placeholder="例如：写一个Python函数，实现快速排序算法"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>温度 (Temperature):</label>
+                    <input type="number" id="temperature" value="0.2" min="0" max="2" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>最大Token数:</label>
+                    <input type="number" id="max_tokens" value="512" min="50" max="2048">
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="generateCode()">生成代码</button>
+            <div id="generate-result" class="result-box" style="display: none;">
+                <h3>生成结果：</h3>
+                <pre><code id="generated-code"></code></pre>
+            </div>
+        </div>
+
+        <div id="tab-agent" class="tab-content">
+            <h2>AI对话助手</h2>
+            <div class="agent-container">
+                <div class="conversation-sidebar">
+                    <button class="btn btn-primary" onclick="createNewConversation()">新建对话</button>
+                    <div id="conversation-list"></div>
+                </div>
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <h3 id="current-conversation-title">选择或创建对话</h3>
+                        <div class="chat-controls">
+                            <label><input type="checkbox" id="use-rag"> 使用RAG</label>
+                            <label>温度: <input type="number" id="chat-temperature" value="0.7" min="0" max="2" step="0.1" style="width: 60px;"></label>
+                            <button class="btn btn-small" onclick="clearCurrentConversation()">清空历史</button>
+                        </div>
+                    </div>
+                    <div id="chat-messages" class="chat-messages"></div>
+                    <div class="chat-input-container">
+                        <textarea id="chat-input" placeholder="输入消息..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
+                        <button class="btn btn-primary" onclick="sendMessage()">发送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div id="tab-slicer" class="tab-content">
+            <h2>代码切片工具</h2>
+            <p class="info-text">自动扫描文件夹，筛选指定后缀的代码文件并切片</p>
+            <div class="form-group">
+                <label>扫描目录路径：</label>
+                <input type="text" id="slice-directory" placeholder="例如：./src 或 C:/projects/myapp">
+                <small>提示：输入要扫描的文件夹路径，会自动跳过 node_modules、__pycache__ 等目录</small>
+            </div>
+            <div class="form-group">
+                <label>文件类型（多选）：</label>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" value=".py" checked> Python (.py)</label>
+                    <label><input type="checkbox" value=".js" checked> JavaScript (.js)</label>
+                    <label><input type="checkbox" value=".ts"> TypeScript (.ts)</label>
+                    <label><input type="checkbox" value=".jsx"> React JSX (.jsx)</label>
+                    <label><input type="checkbox" value=".tsx"> React TSX (.tsx)</label>
+                    <label><input type="checkbox" value=".java"> Java (.java)</label>
+                    <label><input type="checkbox" value=".cpp"> C++ (.cpp)</label>
+                    <label><input type="checkbox" value=".c"> C (.c)</label>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>最大文件数：</label>
+                    <input type="number" id="max-files" value="1000" min="1">
+                </div>
+                <div class="form-group">
+                    <label>最小代码长度：</label>
+                    <input type="number" id="min-length" value="50" min="10">
+                </div>
+                <div class="form-group">
+                    <label>最大代码长度：</label>
+                    <input type="number" id="max-length" value="5000" min="100">
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="sliceCode()">开始切片</button>
+            <div id="slice-status" class="status-box" style="display: none;">
+                <div class="progress-bar">
+                    <div id="slice-progress" class="progress-fill"></div>
+                </div>
+                <p id="slice-message"></p>
+            </div>
+        </div>
+
+
+        <div id="tab-knowledge" class="tab-content">
+            <h2>知识库管理</h2>
+            <div class="info-box">
+                <h3>当前知识库状态</h3>
+                <div id="kb-info">加载中...</div>
+            </div>
+            <h3>导入代码切片</h3>
+            <div class="form-group">
+                <label>选择切片文件 (JSON)：</label>
+                <input type="file" id="kb-file" accept=".json">
+            </div>
+            <div class="form-group">
+                <label>导入模式：</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="import-mode" value="append" checked> 叠加模式（保留原有数据）</label>
+                    <label><input type="radio" name="import-mode" value="overwrite"> 覆盖模式（清空原有数据）</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label><input type="checkbox" id="use-npu" checked> 使用NPU加速</label>
+            </div>
+            <button class="btn btn-primary" onclick="buildKnowledgeBase()">构建知识库</button>
+            <div id="kb-status" class="status-box" style="display: none;">
+                <div class="progress-bar">
+                    <div id="kb-progress" class="progress-fill"></div>
+                </div>
+                <p id="kb-message"></p>
+            </div>
+        </div>
+
+        <div id="tab-api" class="tab-content">
+            <h2 data-i18n="api_title">API文档</h2>
+            <div class="api-section">
+                <h3>OpenAI兼容API</h3>
+                <p>Base URL: <code>http://localhost:58761/v1</code></p>
+                <p>API Key: <code>pom-0721</code></p>
+                <h4>Chat Completions</h4>
+                <pre><code>POST /v1/chat/completions
+Headers:
+  Authorization: Bearer pom-0721
+  Content-Type: application/json
+
+Body:
+{
+  "model": "pomcoder",
+  "messages": [
+    {"role": "user", "content": "写一个快速排序"}
+  ],
+  "temperature": 0.2,
+  "max_tokens": 512,
+  "stream": false
+}</code></pre>
+            </div>
+            <div class="api-section">
+                <h3 data-i18n="api_generate_title">代码生成API</h3>
+                <pre><code>POST /api/generate
+Content-Type: application/json
+
+Body:
+{
+  "query": "写一个Python快速排序函数",
+  "temperature": 0.2,
+  "max_tokens": 512
+}</code></pre>
+            </div>
+            <div class="api-section">
+                <h3 data-i18n="api_conversation_title">对话管理API</h3>
+                <pre><code>POST /api/conversations/create
+GET  /api/conversations/list
+GET  /api/conversations/{id}
+POST /api/conversations/chat
+DELETE /api/conversations/{id}</code></pre>
+            </div>
+        </div>
+
+        <div id="tab-settings" class="tab-content">
+            <h2 data-i18n="settings_title">设置</h2>
+            
+            <div class="settings-section">
+                <h3 data-i18n="settings_language">语言设置</h3>
+                <div class="form-group">
+                    <label data-i18n="settings_select_language">选择语言：</label>
+                    <select id="language-select" onchange="changeLanguage()">
+                        <option value="zh">中文 (Chinese)</option>
+                        <option value="en">English</option>
+                        <option value="ja">日本語 (Japanese)</option>
+                        <option value="ko">한국어 (Korean)</option>
+                        <option value="fr">Français (French)</option>
+                        <option value="de">Deutsch (German)</option>
+                        <option value="es">Español (Spanish)</option>
+                        <option value="ru">Русский (Russian)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3 data-i18n="settings_model">模型设置</h3>
+                <div class="form-group">
+                    <label data-i18n="settings_current_model">当前模型：</label>
+                    <input type="text" id="current-model" value="deepseek-coder:6.7b" placeholder="例如: deepseek-coder:6.7b">
+                    <small data-i18n="settings_model_hint">输入Ollama模型名称，确保已通过 ollama pull 下载</small>
+                </div>
+                <div class="form-group">
+                    <label data-i18n="settings_ollama_url">Ollama服务地址：</label>
+                    <input type="text" id="ollama-url" value="http://localhost:11434" placeholder="http://localhost:11434">
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()" data-i18n="settings_save">保存设置</button>
+                <button class="btn btn-small" onclick="testModel()" data-i18n="settings_test_model">测试模型</button>
+            </div>
+
+            <div class="settings-section">
+                <h3 data-i18n="settings_system">系统信息</h3>
+                <div id="system-info" class="info-box">
+                    <p data-i18n="settings_loading">加载中...</p>
+                </div>
+            </div>
+
+            <div class="settings-section support-section">
+                <h3 data-i18n="settings_support">支持项目</h3>
+                <p class="support-text">
+                    <span data-i18n="settings_support_text">如果你喜欢这个项目，请给</span>
+                    <a href="https://github.com/mamajunya" target="_blank" rel="noopener noreferrer" class="github-link">
+                        <strong>mamajunya</strong>
+                    </a>
+                    <span data-i18n="settings_support_star">点一颗 Star ⭐</span>
+                </p>
+                <a href="https://github.com/mamajunya" target="_blank" rel="noopener noreferrer" class="btn btn-github">
+                    <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: middle; margin-right: 8px;">
+                        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+                    </svg>
+                    GitHub
+                </a>
+            </div>
+        </div>
+    </div>
+    <script src="/static/app.js?v=2"></script>
+</body>
+</html>
