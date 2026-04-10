@@ -48,11 +48,14 @@ Service will run at: http://localhost:58761
 - Code block syntax highlighting
 - Optional RAG enhancement (disabled by default)
 
-### 3. Code Slicer Tool
+### Code Slicer Tool
 - Automatic folder scanning
 - Support for multiple file types (.py, .js, .ts, .jsx, .tsx, .java, .cpp, .c)
 - Auto-skip dependency directories (node_modules, __pycache__, etc.)
-- Configurable file count and code length
+- **Token-level control** (max/min tokens, overlap)
+- **Multi-level slicing strategy** (structure → token → fallback)
+- **Quality scoring system** (0-10 scale)
+- Rich metadata extraction
 
 ### 4. Knowledge Base Management
 - Import code slices

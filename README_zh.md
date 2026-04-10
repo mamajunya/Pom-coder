@@ -52,7 +52,10 @@ python app_full.py
 - 自动扫描文件夹
 - 支持多种文件类型（.py, .js, .ts, .jsx, .tsx, .java, .cpp, .c）
 - 自动跳过依赖目录（node_modules, __pycache__等）
-- 可配置文件数量和代码长度
+- **Token级精确控制**（最大/最小Token、重叠）
+- **多级切片策略**（结构 → Token → Fallback）
+- **质量评分系统**（0-10分）
+- 丰富的元数据提取
 
 ### 4. 知识库管理
 - 导入代码切片
@@ -85,7 +88,7 @@ python app_full.py
 python app_full.py --model deepseek-coder:6.7b --port 58761
 ```
 
-## 📖 API文档
+## API文档
 
 ### OpenAI兼容API
 
@@ -124,7 +127,7 @@ curl http://localhost:58761/api/generate \
 - `POST /api/conversations/chat` - 发送消息
 - `DELETE /api/conversations/{id}` - 删除对话
 
-## 📁 项目结构
+## 项目结构
 
 ```
 pom_coder/
@@ -154,7 +157,7 @@ pom_coder/
 └── conversations/              # 对话历史
 ```
 
-## 🛠️ 工具脚本
+## 工具脚本
 
 ### 重启服务器
 ```bash
@@ -176,7 +179,7 @@ python build_knowledge_base_npu.py
 python code_slicer.py
 ```
 
-## 📝 使用说明
+## 使用说明
 
 ### 代码切片工作流
 
@@ -203,7 +206,7 @@ python code_slicer.py
 4. 可选择是否使用RAG增强
 5. 调节温度参数控制创造性
 
-## 🔍 故障排除
+## 故障排除
 
 ### 端口被占用
 ```bash
@@ -223,14 +226,11 @@ ollama serve
 ### 知识库未加载
 检查 `knowledge_base/` 目录是否存在必要文件
 
-## 📄 许可证
 
-MIT License
-
-## 🤝 贡献
+## 贡献
 
 欢迎提交 Issue 和 Pull Request！
 
-## 📧 联系方式
+## 联系方式
 
 如有问题，请提交 Issue。

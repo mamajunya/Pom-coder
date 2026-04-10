@@ -22,16 +22,15 @@ class PromptConstructor:
     """
     
     # 默认系统指令模板
-    DEFAULT_SYSTEM_PROMPT = """You are an expert code assistant. Your task is to generate high-quality, production-ready code based on the user's requirements.
-
-Guidelines:
-1. Write clean, readable, and well-documented code
+    DEFAULT_SYSTEM_PROMPT = """You are a professional programmer. Your task is to generate high-quality, production-ready code based on user requirements. Guidelines:
+1. Write clean, readable, and well-commented code
 2. Follow best practices and coding standards
 3. Include necessary error handling
 4. Add helpful comments where appropriate
 5. Ensure the code is efficient and maintainable
+6. Fully adhere to user requirements
 
-If reference code is provided below, use it as inspiration but adapt it to the specific requirements."""
+If reference code is provided below, it can be used as inspiration, but it should be adjusted according to the specific requirements."""
     
     # 参考代码部分模板
     REFERENCE_TEMPLATE = """

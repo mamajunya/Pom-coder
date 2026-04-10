@@ -77,12 +77,14 @@
 
         <div id="tab-slicer" class="tab-content">
             <h2>代码切片工具</h2>
-            <p class="info-text">自动扫描文件夹，筛选指定后缀的代码文件并切片</p>
+            <p class="info-text">精致代码切片系统 - 支持Token控制、多级切片、质量评分</p>
+            
             <div class="form-group">
                 <label>扫描目录路径：</label>
                 <input type="text" id="slice-directory" placeholder="例如：./src 或 C:/projects/myapp">
                 <small>提示：输入要扫描的文件夹路径，会自动跳过 node_modules、__pycache__ 等目录</small>
             </div>
+            
             <div class="form-group">
                 <label>文件类型（多选）：</label>
                 <div class="checkbox-group">
@@ -96,18 +98,34 @@
                     <label><input type="checkbox" value=".c"> C (.c)</label>
                 </div>
             </div>
+            
+            <h3>高级选项</h3>
             <div class="form-row">
+                <div class="form-group">
+                    <label>最大Token数：</label>
+                    <input type="number" id="max-tokens" value="512" min="128" max="2048">
+                </div>
+                <div class="form-group">
+                    <label>最小Token数：</label>
+                    <input type="number" id="min-tokens" value="50" min="10" max="500">
+                </div>
+                <div class="form-group">
+                    <label>重叠Token数：</label>
+                    <input type="number" id="overlap-tokens" value="50" min="0" max="200">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>切片策略：</label>
+                    <select id="slice-strategy">
+                        <option value="hybrid">混合策略（推荐）</option>
+                        <option value="structure">结构优先</option>
+                        <option value="token">Token优先</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label>最大文件数：</label>
                     <input type="number" id="max-files" value="1000" min="1">
-                </div>
-                <div class="form-group">
-                    <label>最小代码长度：</label>
-                    <input type="number" id="min-length" value="50" min="10">
-                </div>
-                <div class="form-group">
-                    <label>最大代码长度：</label>
-                    <input type="number" id="max-length" value="5000" min="100">
                 </div>
             </div>
             <button class="btn btn-primary" onclick="sliceCode()">开始切片</button>
@@ -126,6 +144,17 @@
                 <h3>当前知识库状态</h3>
                 <div id="kb-info">加载中...</div>
             </div>
+            
+            <!-- ✅ 添加清除数据库按钮 -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <button class="btn btn-danger" onclick="clearKnowledgeBase()" style="background-color: #dc3545;">
+                    🗑️ 清除知识库
+                </button>
+                <span style="color: #666; margin-left: 10px; font-size: 0.9em;">
+                    （删除所有embedding数据和索引文件）
+                </span>
+            </div>
+            
             <h3>导入代码切片</h3>
             <div class="form-group">
                 <label>选择切片文件 (JSON)：</label>

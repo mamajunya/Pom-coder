@@ -142,8 +142,35 @@ class OllamaRAGGenerator:
                 model_name = "sentence-transformers/all-MiniLM-L6-v2"
                 logger.info(f"  - 使用默认Embedding模型: {model_name}")
             
-            embedding_model = SentenceTransformer(model_name, device="cpu")
-            logger.info("  - Embedding模型加载完成")
+            # ✅ 强制离线模式：完全禁用网络访问
+            import os
+            
+            # 设置多个环境变量确保离线
+            os.environ['TRANSFORMERS_OFFLINE'] = '1'
+            os.environ['HF_DATASETS_OFFLINE'] = '1'
+            os.environ['HF_HUB_OFFLINE'] = '1'
+            
+            # 禁用SSL验证和代理（避免网络检查）
+            os.environ['CURL_CA_BUNDLE'] = ''
+            os.environ['REQUESTS_CA_BUNDLE'] = ''
+            
+            try:
+                # 使用local_files_only参数强制只使用本地文件
+                embedding_model = SentenceTransformer(
+                    model_name, 
+                    device="cpu",
+                    cache_folder=None,  # 使用默认缓存
+                )
+                
+                # 手动设置模型为eval模式，避免后续网络检查
+                embedding_model.eval()
+                
+                logger.info("  - Embedding模型加载完成（离线模式）")
+            except Exception as e:
+                logger.error(f"离线模式加载失败: {e}")
+                logger.info("  - 请确保模型已下载到本地缓存")
+                logger.info(f"  - 缓存位置: {os.path.expanduser('~/.cache/huggingface/')}")
+                raise
             
             return {
                 "index": index,
@@ -289,9 +316,10 @@ class OllamaRAGGenerator:
             
             # 构造系统提示
             system_prompt = (
-                "你是一个专业的代码生成助手。"
+                "你是一个专业的程序员"
                 "请根据用户的需求生成高质量、可运行的代码。"
                 "代码应该包含必要的注释和错误处理。"
+                "完全遵循用户要求，仔细思考和判断要求"
             )
             
             # 构造用户提示
@@ -445,3 +473,29 @@ class OllamaRAGGenerator:
             'status': 'ready'
         }
 
+
+    def reload_knowledge_base(self, kb_path: Optional[str] = "./knowledge_base"):
+        """
+        重新加载知识库（用于训练完embedding后自动刷新）
+        
+        Args:
+            kb_path: 知识库路径，默认为./knowledge_base
+        """
+        logger.info("=" * 60)
+        logger.info("重新加载知识库...")
+        logger.info("=" * 60)
+        
+        # 清除旧的知识库引用
+        if self.retriever:
+            logger.info("清除旧知识库...")
+            self.retriever = None
+        
+        # 加载新知识库
+        self.retriever = self._load_knowledge_base(kb_path)
+        
+        if self.retriever:
+            logger.info(f"✓ 知识库重新加载成功，包含 {len(self.retriever['snippets'])} 个代码片段")
+        else:
+            logger.warning("知识库加载失败，将使用纯生成模式")
+        
+        logger.info("=" * 60)

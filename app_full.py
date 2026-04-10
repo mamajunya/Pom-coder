@@ -8,6 +8,14 @@ pomCoder - 智能代码生成助手
 4. 美观的Web GUI
 """
 
+# ✅ 在导入任何库之前设置离线模式环境变量
+import os
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
+os.environ['HF_DATASETS_OFFLINE'] = '1'
+os.environ['HF_HUB_OFFLINE'] = '1'
+os.environ['CURL_CA_BUNDLE'] = ''
+os.environ['REQUESTS_CA_BUNDLE'] = ''
+
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, BackgroundTasks, Header
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,7 +37,7 @@ from src.rag_code_generator.ollama_rag_generator import OllamaRAGGenerator
 from src.rag_code_generator.ollama_generator import OllamaGeneratorError
 from src.rag_code_generator.conversation import ConversationManager
 from build_knowledge_base_npu import NPUKnowledgeBaseBuilder
-from code_slicer import CodeSlicerTool
+from code_slicer import CodeSlicerPipeline, SlicerConfig
 
 
 # 创建FastAPI应用
@@ -125,9 +133,37 @@ kb_builder: Optional[NPUKnowledgeBaseBuilder] = None
 kb_build_status = {"status": "idle", "progress": 0, "message": ""}
 slicer_status = {"status": "idle", "progress": 0, "message": "", "slices": 0}
 current_model_name: Optional[str] = None  # 记录当前加载的模型名称
+current_ollama_url: str = "http://localhost:11434"  # 当前Ollama服务地址
 
 # OpenAI API密钥配置
 OPENAI_API_KEY = "pom-0721"  # 默认API密钥
+
+# 配置文件路径
+CONFIG_FILE = Path("./pomcoder_config.json")
+
+
+# ==================== 配置管理 ====================
+
+def load_config() -> Dict[str, Any]:
+    """加载配置文件"""
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"加载配置文件失败: {e}")
+            return {}
+    return {}
+
+
+def save_config(config: Dict[str, Any]):
+    """保存配置文件"""
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        logger.info(f"配置已保存到 {CONFIG_FILE}")
+    except Exception as e:
+        logger.error(f"保存配置文件失败: {e}")
 
 
 # ==================== API密钥验证 ====================
@@ -205,10 +241,11 @@ class BuildKBRequest(BaseModel):
 def initialize_generator(
     model_name: str = "deepseek-coder:6.7b",
     ollama_url: str = "http://localhost:11434",
-    knowledge_base_path: Optional[str] = "./knowledge_base"
+    knowledge_base_path: Optional[str] = "./knowledge_base",
+    skip_preload: bool = False
 ):
     """初始化生成器"""
-    global generator, current_model_name, conversation_manager
+    global generator, current_model_name, current_ollama_url, conversation_manager
     
     try:
         logger.info("初始化Ollama RAG生成器...")
@@ -219,28 +256,38 @@ def initialize_generator(
             enable_cache=True
         )
         current_model_name = model_name  # 记录模型名称
+        current_ollama_url = ollama_url  # 记录服务地址
         logger.info("✓ 生成器初始化成功")
         
         # 初始化对话管理器
-        logger.info("初始化对话管理器...")
-        conversation_manager = ConversationManager(storage_dir="./conversations")
-        logger.info("✓ 对话管理器初始化成功")
+        if conversation_manager is None:
+            logger.info("初始化对话管理器...")
+            conversation_manager = ConversationManager(storage_dir="./conversations")
+            logger.info("✓ 对话管理器初始化成功")
         
-        # 预加载模型到GPU
-        logger.info("正在预加载模型到GPU...")
-        try:
-            # 发送一个简单的测试请求，触发模型加载
-            test_result = generator.generate(
-                query="print('hello')",
-                temperature=0.1,
-                max_new_tokens=10,
-                use_cache=False,
-                use_rag=False  # 预加载时不使用RAG
-            )
-            logger.info("✓ 模型预加载完成，已就绪")
-        except Exception as e:
-            logger.warning(f"模型预加载失败: {str(e)}")
-            logger.warning("首次请求时将自动加载模型")
+        # 预加载模型到GPU（可选）
+        if not skip_preload:
+            logger.info("正在预加载模型到GPU...")
+            try:
+                # 发送一个简单的测试请求，触发模型加载
+                test_result = generator.generate(
+                    query="print('hello')",
+                    temperature=0.1,
+                    max_new_tokens=10,
+                    use_cache=False,
+                    use_rag=False  # 预加载时不使用RAG
+                )
+                logger.info("✓ 模型预加载完成，已就绪")
+            except Exception as e:
+                logger.warning(f"模型预加载失败: {str(e)}")
+                logger.warning("首次请求时将自动加载模型")
+        
+        # 保存配置
+        save_config({
+            "model_name": model_name,
+            "ollama_url": ollama_url,
+            "last_updated": time.time()
+        })
         
         return True
     except Exception as e:
@@ -589,8 +636,10 @@ class SliceRequest(BaseModel):
     directory: str
     extensions: List[str] = [".py", ".js"]
     max_files: int = 1000
-    min_length: int = 50
-    max_length: int = 5000
+    max_tokens: int = 512
+    min_tokens: int = 50
+    overlap_tokens: int = 50
+    strategy: str = "hybrid"
 
 
 @app.post("/api/code-slicer/slice")
@@ -603,8 +652,10 @@ async def slice_code(request: SliceRequest, background_tasks: BackgroundTasks):
             request.directory,
             request.extensions,
             request.max_files,
-            request.min_length,
-            request.max_length
+            request.max_tokens,
+            request.min_tokens,
+            request.overlap_tokens,
+            request.strategy
         )
         
         return {"message": "代码切片已开始", "status": "slicing"}
@@ -650,8 +701,10 @@ def slice_code_task(
     directory: str,
     extensions: List[str],
     max_files: int,
-    min_length: int,
-    max_length: int
+    max_tokens: int,
+    min_tokens: int,
+    overlap_tokens: int,
+    strategy: str
 ):
     """后台切片任务 - 目录模式"""
     global slicer_status
@@ -659,35 +712,48 @@ def slice_code_task(
     try:
         slicer_status = {"status": "slicing", "progress": 10, "message": "初始化切片器...", "slices": 0}
         
-        slicer = CodeSlicerTool()
+        # 创建配置
+        config = SlicerConfig(
+            max_tokens=max_tokens,
+            min_tokens=min_tokens,
+            overlap_tokens=overlap_tokens,
+            extensions=extensions,
+            max_files=max_files,
+            strategy=strategy
+        )
+        
+        # 创建流水线
+        pipeline = CodeSlicerPipeline(config)
         
         slicer_status["progress"] = 30
         slicer_status["message"] = f"扫描目录: {directory}"
         
-        slices = slicer.slice_directory(
-            directory=directory,
-            extensions=extensions,
-            max_files=max_files,
-            min_code_length=min_length,
-            max_code_length=max_length
-        )
-        
-        slicer_status["progress"] = 70
-        slicer_status["message"] = "保存结果..."
-        
+        # 运行切片
         output_file = "code_slices.json"
-        slicer.save_to_json(output_file)
+        pipeline.run(directory, output_file)
         
         slicer_status["progress"] = 90
         slicer_status["message"] = "生成统计信息..."
         
-        stats = slicer.generate_statistics()
+        # 读取结果统计
+        with open(output_file, 'r', encoding='utf-8') as f:
+            chunks = json.load(f)
+        
+        stats = {
+            'total': len(chunks),
+            'by_type': {},
+            'avg_tokens': sum(c.get('tokens', 0) for c in chunks) / len(chunks) if chunks else 0
+        }
+        
+        for chunk in chunks:
+            chunk_type = chunk.get('chunk_type', 'unknown')
+            stats['by_type'][chunk_type] = stats['by_type'].get(chunk_type, 0) + 1
         
         slicer_status = {
             "status": "completed",
             "progress": 100,
             "message": "切片完成",
-            "slices": len(slices),
+            "slices": len(chunks),
             "output_file": output_file,
             "stats": stats
         }
@@ -708,55 +774,63 @@ def slice_files_task(
     try:
         slicer_status = {"status": "slicing", "progress": 10, "message": "初始化切片器...", "slices": 0}
         
-        slicer = CodeSlicerTool()
-        all_slices = []
+        # 创建临时目录存放上传的文件
+        import tempfile
+        import shutil
+        temp_dir = tempfile.mkdtemp()
         
-        slicer_status["progress"] = 30
-        slicer_status["message"] = f"处理 {len(file_paths)} 个文件..."
-        
-        for i, file_path in enumerate(file_paths):
-            file_path_obj = Path(file_path)
+        try:
+            # 复制文件到临时目录
+            for file_path in file_paths:
+                shutil.copy(file_path, temp_dir)
             
-            # 根据文件扩展名选择切片器
-            if file_path_obj.suffix == '.py':
-                slices = slicer.python_slicer.slice_file(file_path_obj)
-            elif file_path_obj.suffix in ['.js', '.jsx', '.ts', '.tsx']:
-                slices = slicer.js_slicer.slice_file(file_path_obj)
-            else:
-                logger.warning(f"不支持的文件类型: {file_path_obj.suffix}")
-                continue
+            slicer_status["progress"] = 30
+            slicer_status["message"] = f"处理 {len(file_paths)} 个文件..."
             
-            # 过滤切片
-            for slice_obj in slices:
-                if min_length <= len(slice_obj.code) <= max_length:
-                    all_slices.append(slice_obj)
+            # 创建配置
+            config = SlicerConfig(
+                max_tokens=512,
+                min_tokens=min_length // 4,
+                overlap_tokens=50,
+                strategy="hybrid"
+            )
             
-            # 更新进度
-            progress = 30 + int((i + 1) / len(file_paths) * 40)
-            slicer_status["progress"] = progress
-            slicer_status["message"] = f"已处理 {i + 1}/{len(file_paths)} 个文件"
+            # 创建流水线
+            pipeline = CodeSlicerPipeline(config)
+            
+            # 运行切片
+            output_file = "code_slices.json"
+            pipeline.run(temp_dir, output_file)
+            
+            slicer_status["progress"] = 90
+            slicer_status["message"] = "生成统计信息..."
+            
+            # 读取结果统计
+            with open(output_file, 'r', encoding='utf-8') as f:
+                chunks = json.load(f)
+            
+            stats = {
+                'total': len(chunks),
+                'by_type': {},
+                'avg_tokens': sum(c.get('tokens', 0) for c in chunks) / len(chunks) if chunks else 0
+            }
+            
+            for chunk in chunks:
+                chunk_type = chunk.get('chunk_type', 'unknown')
+                stats['by_type'][chunk_type] = stats['by_type'].get(chunk_type, 0) + 1
+            
+            slicer_status = {
+                "status": "completed",
+                "progress": 100,
+                "message": "切片完成",
+                "slices": len(chunks),
+                "output_file": output_file,
+                "stats": stats
+            }
         
-        slicer.slices = all_slices
-        
-        slicer_status["progress"] = 70
-        slicer_status["message"] = "保存结果..."
-        
-        output_file = "code_slices.json"
-        slicer.save_to_json(output_file)
-        
-        slicer_status["progress"] = 90
-        slicer_status["message"] = "生成统计信息..."
-        
-        stats = slicer.generate_statistics()
-        
-        slicer_status = {
-            "status": "completed",
-            "progress": 100,
-            "message": "切片完成",
-            "slices": len(all_slices),
-            "output_file": output_file,
-            "stats": stats
-        }
+        finally:
+            # 清理临时目录
+            shutil.rmtree(temp_dir, ignore_errors=True)
         
     except Exception as e:
         logger.error(f"切片失败: {str(e)}")
@@ -807,7 +881,7 @@ async def build_knowledge_base(
 
 def build_kb_task(source_path: str, use_npu: bool, embedding_model: str, append_mode: bool = True):
     """后台构建知识库任务"""
-    global kb_build_status
+    global kb_build_status, generator
     
     try:
         kb_build_status = {"status": "building", "progress": 0, "message": "初始化..."}
@@ -830,9 +904,36 @@ def build_kb_task(source_path: str, use_npu: bool, embedding_model: str, append_
         builder.build()
         
         mode_text = "叠加" if append_mode else "覆盖"
-        kb_build_status = {"status": "completed", "progress": 100, "message": f"构建完成（{mode_text}模式）"}
+        kb_build_status["progress"] = 90
+        kb_build_status["message"] = "重新加载知识库..."
+        
+        # ✅ 自动重新加载知识库
+        if generator is not None:
+            try:
+                logger.info("知识库构建完成，正在重新加载...")
+                generator.reload_knowledge_base()
+                logger.info("✓ 知识库重新加载成功")
+                kb_build_status = {
+                    "status": "completed", 
+                    "progress": 100, 
+                    "message": f"构建完成（{mode_text}模式），知识库已自动重载"
+                }
+            except Exception as e:
+                logger.error(f"重新加载知识库失败: {e}")
+                kb_build_status = {
+                    "status": "completed_with_warning", 
+                    "progress": 100, 
+                    "message": f"构建完成（{mode_text}模式），但重载失败，请手动重启服务"
+                }
+        else:
+            kb_build_status = {
+                "status": "completed", 
+                "progress": 100, 
+                "message": f"构建完成（{mode_text}模式）"
+            }
         
     except Exception as e:
+        logger.error(f"知识库构建失败: {str(e)}")
         kb_build_status = {"status": "error", "progress": 0, "message": str(e)}
 
 
@@ -840,6 +941,76 @@ def build_kb_task(source_path: str, use_npu: bool, embedding_model: str, append_
 async def get_kb_status():
     """获取知识库构建状态"""
     return kb_build_status
+
+
+@app.delete("/api/knowledge-base/clear")
+async def clear_knowledge_base():
+    """一键清除知识库数据"""
+    global generator
+    
+    try:
+        kb_dir = Path("./knowledge_base")
+        
+        if not kb_dir.exists():
+            return {
+                "success": True,
+                "message": "知识库目录不存在，无需清除"
+            }
+        
+        logger.info("开始清除知识库...")
+        
+        # 清除所有知识库文件
+        files_to_delete = [
+            "snippets.json",
+            "embeddings.npy",
+            "faiss_index.bin",
+            "bm25_index.pkl",
+            "config.json"
+        ]
+        
+        deleted_files = []
+        for filename in files_to_delete:
+            file_path = kb_dir / filename
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                    deleted_files.append(filename)
+                    logger.info(f"✓ 已删除: {filename}")
+                except Exception as e:
+                    logger.warning(f"删除 {filename} 失败: {e}")
+        
+        # 清除OpenVINO模型目录
+        ov_model_dir = kb_dir / "ov_model"
+        if ov_model_dir.exists():
+            try:
+                import shutil
+                shutil.rmtree(ov_model_dir)
+                deleted_files.append("ov_model/")
+                logger.info("✓ 已删除: ov_model/")
+            except Exception as e:
+                logger.warning(f"删除 ov_model 目录失败: {e}")
+        
+        # 重新初始化生成器（清空知识库）
+        if generator is not None:
+            try:
+                logger.info("重新初始化生成器（无知识库模式）...")
+                generator.knowledge_base = None
+                generator.retriever = None
+                logger.info("✓ 生成器已切换到无知识库模式")
+            except Exception as e:
+                logger.warning(f"重新初始化生成器失败: {e}")
+        
+        logger.info(f"知识库清除完成，共删除 {len(deleted_files)} 项")
+        
+        return {
+            "success": True,
+            "message": f"知识库已清除（{len(deleted_files)} 项）",
+            "deleted_files": deleted_files
+        }
+        
+    except Exception as e:
+        logger.error(f"清除知识库失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==================== 对话管理API ====================
@@ -1133,34 +1304,60 @@ class SettingsUpdateRequest(BaseModel):
 @app.post("/api/settings/update")
 async def update_settings(request: SettingsUpdateRequest):
     """更新设置并重新初始化生成器"""
-    global generator, current_model_name
+    global generator, current_model_name, current_ollama_url
     
     try:
         logger.info(f"更新设置: 模型={request.model_name}, URL={request.ollama_url}")
+        
+        # 先测试Ollama连接
+        try:
+            test_response = requests.get(f"{request.ollama_url}/api/tags", timeout=3)
+            if test_response.status_code != 200:
+                return {
+                    "success": False,
+                    "message": f"无法连接到Ollama服务 ({request.ollama_url})",
+                    "error": "请确保Ollama服务正在运行：ollama serve"
+                }
+        except requests.exceptions.RequestException as e:
+            return {
+                "success": False,
+                "message": "无法连接到Ollama服务",
+                "error": f"请确保Ollama服务正在运行：ollama serve\n错误详情: {str(e)}"
+            }
         
         # 卸载旧模型
         if current_model_name:
             unload_ollama_model()
         
-        # 重新初始化生成器
+        # 重新初始化生成器（跳过预加载以加快速度）
         success = initialize_generator(
             model_name=request.model_name,
             ollama_url=request.ollama_url,
-            knowledge_base_path="./knowledge_base"
+            knowledge_base_path="./knowledge_base",
+            skip_preload=True
         )
         
         if success:
             return {
                 "success": True,
                 "message": "设置已更新",
-                "model_name": current_model_name
+                "model_name": current_model_name,
+                "ollama_url": current_ollama_url
             }
         else:
-            raise Exception("生成器初始化失败")
+            return {
+                "success": False,
+                "message": "生成器初始化失败",
+                "error": "请检查模型名称是否正确，或查看服务器日志"
+            }
             
     except Exception as e:
         logger.error(f"更新设置失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "success": False,
+            "message": "更新设置时发生错误",
+            "error": str(e)
+        }
 
 
 class TestModelRequest(BaseModel):
@@ -1240,7 +1437,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="pomCoder - 智能代码生成助手")
-    parser.add_argument("--model", default="deepseek-coder:6.7b", help="Ollama模型")
+    parser.add_argument("--model", default=None, help="Ollama模型（可选，优先使用配置文件）")
     parser.add_argument("--port", type=int, default=58761, help="端口")
     parser.add_argument("--host", default="0.0.0.0", help="主机")
     
@@ -1254,16 +1451,53 @@ def main():
     logger.info("pomCoder - 智能代码生成助手")
     logger.info("=" * 60)
     
-    # 初始化
-    success = initialize_generator(model_name=args.model)
+    # 加载配置文件
+    config = load_config()
     
-    if not success:
-        logger.error("初始化失败")
-        return
+    # 确定使用的模型（优先级：命令行参数 > 配置文件 > 默认值）
+    model_name = args.model or config.get("model_name", "deepseek-coder:6.7b")
+    ollama_url = config.get("ollama_url", "http://localhost:11434")
+    
+    # 检查是否是首次启动
+    is_first_run = not CONFIG_FILE.exists()
+    
+    if is_first_run:
+        logger.info("检测到首次启动")
+        logger.info("请在Web界面的【设置】页面配置模型")
+        logger.info(f"默认模型: {model_name}")
+        logger.info("提示: 模型将在首次使用时自动加载")
+        
+        # 首次启动：只初始化对话管理器，不加载模型
+        global conversation_manager
+        logger.info("初始化对话管理器...")
+        conversation_manager = ConversationManager(storage_dir="./conversations")
+        logger.info("✓ 对话管理器初始化成功")
+        
+        # 保存默认配置
+        save_config({
+            "model_name": model_name,
+            "ollama_url": ollama_url,
+            "first_run": True,
+            "last_updated": time.time()
+        })
+    else:
+        logger.info("加载已保存的配置")
+        logger.info(f"模型: {model_name}")
+        logger.info(f"Ollama服务: {ollama_url}")
+        
+        # 非首次启动：尝试初始化生成器
+        logger.info("正在初始化生成器...")
+        success = initialize_generator(
+            model_name=model_name,
+            ollama_url=ollama_url,
+            skip_preload=False  # 非首次启动时预加载模型
+        )
+        
+        if not success:
+            logger.warning("生成器初始化失败，请在设置中重新配置")
     
     logger.info(f"启动Web服务: http://{args.host}:{args.port}")
     logger.info(f"OpenAI API: http://{args.host}:{args.port}/v1")
-    logger.info(f"使用模型: {args.model}")
     logger.info("提示: 按 Ctrl+C 停止服务并自动卸载模型")
     logger.info("=" * 60)
     

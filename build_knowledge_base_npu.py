@@ -4,7 +4,14 @@
 支持Intel Core Ultra处理器的NPU加速Embedding生成
 """
 
+# ✅ 在导入任何库之前设置离线模式环境变量
 import os
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
+os.environ['HF_DATASETS_OFFLINE'] = '1'
+os.environ['HF_HUB_OFFLINE'] = '1'
+os.environ['CURL_CA_BUNDLE'] = ''
+os.environ['REQUESTS_CA_BUNDLE'] = ''
+
 import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -144,19 +151,48 @@ class NPUKnowledgeBaseBuilder:
         logger.info(f"✓ 收集了 {len(self.snippets)} 个代码片段")
     
     def collect_from_json(self, json_file: str):
-        """从JSON文件加载代码片段"""
+        """从JSON文件加载代码片段（兼容V3.5格式）"""
         logger.info(f"从JSON加载代码片段: {json_file}")
         
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         for item in data:
+            # ✅ 兼容V3.5格式：content/code, file_path/path
+            code = item.get('content', item.get('code', ''))
+            path = item.get('file_path', item.get('path', 'unknown'))
+            
+            # 生成描述（优先使用summary，否则使用description或name）
+            description = item.get('summary', item.get('description', ''))
+            if not description and item.get('name'):
+                chunk_type = item.get('chunk_type', 'code')
+                description = f"{chunk_type}: {item['name']}"
+            
+            # 合并元数据（保留V3.5的额外字段）
+            metadata = item.get('metadata', {})
+            
+            # ✅ 添加V3.5特有字段到metadata
+            if 'tokens' in item:
+                metadata['tokens'] = item['tokens']
+            if 'quality_score' in item:
+                metadata['quality_score'] = item['quality_score']
+            if 'semantic_completeness' in item:
+                metadata['semantic_completeness'] = item['semantic_completeness']
+            if 'start_line' in item:
+                metadata['start_line'] = item['start_line']
+            if 'end_line' in item:
+                metadata['end_line'] = item['end_line']
+            if 'chunk_type' in item:
+                metadata['chunk_type'] = item['chunk_type']
+            if 'context' in item:
+                metadata['context'] = item['context']
+            
             snippet = CodeSnippet(
-                code=item['code'],
-                path=item.get('path', 'unknown'),
+                code=code,
+                path=path,
                 language=item.get('language', 'unknown'),
-                description=item.get('description', ''),
-                metadata=item.get('metadata', {})
+                description=description,
+                metadata=metadata
             )
             self.snippets.append(snippet)
         
@@ -173,17 +209,21 @@ class NPUKnowledgeBaseBuilder:
         
         logger.info("加载现有知识库...")
         
-        # 加载现有片段
+        # 加载现有片段（兼容V3.5格式）
         with open(snippets_path, 'r', encoding='utf-8') as f:
             existing_data = json.load(f)
         
         existing_snippets = []
         for item in existing_data:
+            # ✅ 兼容V3.5格式
+            code = item.get('content', item.get('code', ''))
+            path = item.get('file_path', item.get('path', 'unknown'))
+            
             snippet = CodeSnippet(
-                code=item['code'],
-                path=item.get('path', 'unknown'),
+                code=code,
+                path=path,
                 language=item.get('language', 'unknown'),
-                description=item.get('description', ''),
+                description=item.get('description', item.get('summary', '')),
                 metadata=item.get('metadata', {})
             )
             existing_snippets.append(snippet)

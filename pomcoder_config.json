@@ -1,0 +1,5 @@
+{
+  "model_name": "deepseek-coder:6.7b",
+  "ollama_url": "http://localhost:11434",
+  "last_updated": 1775838820.5548255
+}

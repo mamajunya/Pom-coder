@@ -52,7 +52,7 @@ class Conversation:
     ):
         self.conversation_id = conversation_id or str(uuid.uuid4())
         self.title = title
-        self.system_prompt = system_prompt or "你是一个专业的代码生成助手。"
+        self.system_prompt = system_prompt or "You are a professional AI programmer who will carefully think, thoroughly analyze, and diligently fulfill all user requirements."
         self.messages: List[Message] = []
         self.created_at = datetime.now().isoformat()
         self.updated_at = self.created_at

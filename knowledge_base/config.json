@@ -1,6 +1,6 @@
 {
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-  "num_snippets": 353,
+  "num_snippets": 9418,
   "embedding_dim": 384,
   "use_npu": true,
   "files": {
