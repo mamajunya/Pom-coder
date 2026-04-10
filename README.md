@@ -2,6 +2,32 @@
 
 An intelligent code generation system based on Ollama + RAG, providing code generation, AI chat, knowledge base management, and more.
 
+## ✨ Latest Updates (V3.6.2)
+
+### 🆕 New Features
+- **Offline Mode Support** - Automatically uses local cache, works in offline environments
+- **Right-Click Delete for Conversations** - Quick delete via context menu
+- **Auto-Reload Knowledge Base** - Automatically refreshes after training, no restart needed
+- **One-Click Clear Knowledge Base** - Quickly clear all embedding data
+
+### 🚀 Quick Start (Offline Mode)
+
+**Windows**:
+```bash
+start_offline.bat
+```
+
+**Linux/Mac**:
+```bash
+chmod +x start_offline.sh
+./start_offline.sh
+```
+
+**Python**:
+```bash
+python start_offline.py
+```
+
 ## 🚀 Quick Start
 
 ### 1. Install Dependencies
@@ -41,30 +67,41 @@ Service will run at: http://localhost:58761
 - Adjustable temperature and token count
 - Code syntax highlighting
 
-### 2. AI Chat Assistant
+### 2. AI Chat Assistant ⭐ New: Right-Click Delete
 - Multi-turn conversation support
 - Persistent conversation history
+- **Right-click context menu for quick delete**
 - Markdown rendering
 - Code block syntax highlighting
 - Optional RAG enhancement (disabled by default)
 
-### Code Slicer Tool
+### 3. Code Slicer Tool (V3.5 S+ Grade)
 - Automatic folder scanning
 - Support for multiple file types (.py, .js, .ts, .jsx, .tsx, .java, .cpp, .c)
 - Auto-skip dependency directories (node_modules, __pycache__, etc.)
 - **Token-level control** (max/min tokens, overlap)
 - **Multi-level slicing strategy** (structure → token → fallback)
 - **Quality scoring system** (0-10 scale)
+- **Deep AST sub-node slicing** (control flow level)
+- **Semantic context enhancement** (10+ features)
 - Rich metadata extraction
 
-### 4. Knowledge Base Management
+### 4. Knowledge Base Management ⭐ New: Auto-Reload
 - Import code slices
 - Append/Overwrite modes
+- **Auto-reload after training** (no restart needed)
+- **One-click clear knowledge base**
 - NPU acceleration support
 - FAISS vector retrieval
 - BM25 text retrieval
 
-### 5. OpenAI Compatible API
+### 5. Offline Mode ⭐ New
+- **Automatically uses local cache**
+- **Works in offline environments**
+- **Dedicated offline startup scripts**
+- Multiple environment variable protections
+
+### 6. OpenAI Compatible API
 - Chat Completions API
 - Completions API
 - Streaming response support
@@ -133,9 +170,13 @@ curl http://localhost:58761/api/generate \
 pom_coder/
 ├── app_full.py                 # Main server
 ├── build_knowledge_base_npu.py # Knowledge base builder
-├── code_slicer.py              # Code slicer tool
+├── code_slicer.py              # Code slicer tool (V3.5 S+ Grade)
+├── start_offline.py            # Offline mode startup script
+├── start_offline.bat           # Windows offline startup
+├── start_offline.sh            # Linux/Mac offline startup
 ├── kill_port_58761.py          # Port management tool
 ├── restart_server.py           # Server restart script
+├── CHANGELOG.md                # Version changelog
 ├── config.yaml                 # Configuration file
 ├── requirements.txt            # Python dependencies
 ├── static/                     # Frontend static files
@@ -149,6 +190,12 @@ pom_coder/
 │       ├── ollama_generator.py
 │       ├── conversation.py
 │       └── ...
+├── docs/                       # Documentation
+│   ├── V3.6_知识库自动重载功能.md
+│   ├── AI对话右键删除功能.md
+│   ├── 离线模式配置指南.md
+│   ├── 知识库构建指南.md
+│   └── ...
 ├── knowledge_base/             # Knowledge base data
 │   ├── faiss_index.bin
 │   ├── embeddings.npy
@@ -181,6 +228,31 @@ python code_slicer.py
 
 ## 📖 Usage Guide
 
+### Offline Mode Usage
+
+**First Use (Online Environment)**:
+```bash
+# Normal startup, will automatically download model to local cache
+python app_full.py
+```
+
+**Offline Environment**:
+```bash
+# Use offline startup scripts
+start_offline.bat  # Windows
+./start_offline.sh  # Linux/Mac
+python start_offline.py  # Cross-platform
+```
+
+### AI Chat Features
+
+1. Select "AI Chat" tab in web interface
+2. Click "New Conversation" to create new session
+3. Enter message and send
+4. **Right-click conversation item for quick delete**
+5. Optionally enable RAG enhancement
+6. Adjust temperature parameter to control creativity
+
 ### Code Slicing Workflow
 
 1. Select "Code Slicer" tab in web interface
@@ -196,17 +268,23 @@ python code_slicer.py
 3. Choose import mode (Append/Overwrite)
 4. Check "Use NPU Acceleration" (if supported)
 5. Click "Build Knowledge Base"
-6. Wait for completion
-
-### AI Chat Workflow
-
-1. Select "AI Chat" tab in web interface
-2. Click "New Conversation" to create new session
-3. Enter message and send
-4. Optionally enable RAG enhancement
-5. Adjust temperature parameter to control creativity
+6. **Wait for completion, auto-reload (no restart needed)**
+7. Use "Clear Knowledge Base" button for one-click clear
 
 ## 🔍 Troubleshooting
+
+### Cannot Start in Offline Environment
+
+**Issue**: Cannot connect to huggingface.co
+
+**Solution**:
+```bash
+# Use offline startup scripts
+start_offline.bat  # Windows
+./start_offline.sh  # Linux/Mac
+```
+
+See: `docs/离线模式配置指南.md`
 
 ### Port Already in Use
 ```bash
@@ -225,6 +303,24 @@ ollama serve
 
 ### Knowledge Base Not Loaded
 Check if necessary files exist in `knowledge_base/` directory
+
+### Knowledge Base Not Effective After Training
+
+**V3.6+ Version**: Auto-reload, no restart needed
+
+**Old Version**: Manual restart required
+```bash
+python restart_server.py
+```
+
+## 📚 Documentation
+
+- [CHANGELOG.md](CHANGELOG.md) - Version changelog
+- [V3.6 Auto-Reload Knowledge Base](docs/V3.6_知识库自动重载功能.md)
+- [Right-Click Delete for Conversations](docs/AI对话右键删除功能.md)
+- [Offline Mode Configuration Guide](docs/离线模式配置指南.md)
+- [Knowledge Base Building Guide](docs/知识库构建指南.md)
+- [Code Slicer System Documentation](docs/代码切片系统说明.md)
 
 ## 🤝 Contributing
 
